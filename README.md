@@ -368,7 +368,7 @@ const {
   S3_BUCKET,
 } = process.env;
 
-exports.handler = async (event) => {
+export const handler = async (event) => {
   try {
     const body = JSON.parse(event.body);
     const { name, description, price, imageKey } = body;
@@ -489,7 +489,7 @@ Now, this lambda is going to be in charge of fetching all products and serve it 
 
 The code required is:
 ```JavaScript
-const mysql = require('mysql2/promise');
+import mysql from 'mysql2/promise';
 
 const {
   DB_HOST,
@@ -498,9 +498,9 @@ const {
   DB_NAME,
 } = process.env;
 
-exports.handler = async () => {
+export const handler = async (event) => {
   let connection;
-
+  
   try {
     connection = await mysql.createConnection({
       host: DB_HOST,
@@ -541,7 +541,7 @@ Now, this lambda is going to allow us to fetch for a single Product using its ID
 
 For this we will need this code:
 ```JavaScript
-const mysql = require('mysql2/promise');
+import mysql from 'mysql2/promise';
 
 const {
   DB_HOST,
@@ -550,7 +550,7 @@ const {
   DB_NAME,
 } = process.env;
 
-exports.handler = async (event) => {
+export const handler = async (event) => {
   let connection;
 
   try {
@@ -610,8 +610,8 @@ This lambda will be in charge of deleting an entry from the database based on it
 
 For this wee need the following code:
 ```JavaScript
-const mysql = require('mysql2/promise');
-const AWS = require('aws-sdk');
+import mysql from 'mysql2/promise';
+import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
 
 const {
   DB_HOST,
@@ -619,11 +619,12 @@ const {
   DB_PASS,
   DB_NAME,
   S3_BUCKET,
+  AWS_REGION,
 } = process.env;
 
-const s3 = new AWS.S3();
+const s3 = new S3Client({ region: AWS_REGION });
 
-exports.handler = async (event) => {
+export const handler = async (event) => {
   let connection;
 
   try {
@@ -642,7 +643,6 @@ exports.handler = async (event) => {
       database: DB_NAME,
     });
 
-    // Step 1: Get image key from DB
     const [rows] = await connection.execute(
       'SELECT image_url FROM Products WHERE id = ?',
       [productId]
@@ -656,19 +656,27 @@ exports.handler = async (event) => {
     }
 
     const imageUrl = rows[0].image_url;
-    const imageKey = imageUrl.split(`/${S3_BUCKET}/`)[1] || imageUrl.split('.amazonaws.com/')[1];
+    const imageKey =
+      imageUrl.split(`/${S3_BUCKET}/`)[1] ||
+      imageUrl.split('.amazonaws.com/')[1];
 
-    // Step 2: Delete product from DB
+      console.log(imageKey);
+
     await connection.execute('DELETE FROM Products WHERE id = ?', [productId]);
 
-    // Step 3: Delete image from S3
+    console.log("After DB DELETE")
+
     if (imageKey) {
-      await s3
-        .deleteObject({
-          Bucket: S3_BUCKET,
-          Key: imageKey,
-        })
-        .promise();
+      const deleteCommand = new DeleteObjectCommand({
+        Bucket: S3_BUCKET,
+        Key: imageKey,
+      });
+
+      console.log("Before S3 DELETE")
+
+      await s3.send(deleteCommand);
+
+      console.log("After S3 DELETE");
     }
 
     return {
@@ -698,49 +706,30 @@ This lambda will be in charge of creating Pre-Signed URLs to allow the users to 
 
 For this we will need the following code:
 ```JavaScript
-const AWS = require('aws-sdk');
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-const s3 = new AWS.S3();
-const { S3_BUCKET } = process.env;
+//Be sure to change this region to your own
+const s3 = new S3Client({ region: "us-east-1" });
 
-exports.handler = async (event) => {
-  try {
-    const body = JSON.parse(event.body);
-    const { fileName, fileType } = body;
+export async function handler(event) {
+    const { fileName, fileType } = JSON.parse(event.body);
 
-    if (!fileName || !fileType) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: 'Missing fileName or fileType' }),
-      };
-    }
-
-    const key = `uploads/${Date.now()}_${fileName}`;
-
-    const params = {
-      Bucket: S3_BUCKET,
-      Key: key,
-      Expires: 60 * 5, // 5 minutes
+    //States the file that its going to be uploaded
+    const command = new PutObjectCommand({
+      Bucket: process.env.S3_BUCKET,
+      Key: fileName,
       ContentType: fileType,
-    };
+    });
 
-    const uploadURL = await s3.getSignedUrlPromise('putObject', params);
+    //Creates the URL based on the command created above containing the metadata.
+    const url = await getSignedUrl(s3, command, { expiresIn: 300 });
 
     return {
       statusCode: 200,
-      body: JSON.stringify({
-        uploadURL,
-        key,
-      }),
+      body: JSON.stringify({ uploadUrl: url }),
     };
-  } catch (err) {
-    console.error('Error generating pre-signed URL:', err);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: 'Failed to generate upload URL' }),
-    };
-  }
-};
+}
 ```
 
 Now, this Lambda does not require to attach the MySQL Layer and it only requires the `S3_BUCKET` env variable.
@@ -1649,6 +1638,23 @@ Now we can fully interact with our market place
 
 ![Web app register product](doc/images/frontend/register-product.png)
 
+![Web app home](doc/images/frontend/home-full.png)
+
+![Product Details](doc/images/frontend/product-details.png)
+
+# Extra Evidence
+
+**CloudWatch Logs**
+![alt text](doc/images/evidence/log-groups.png)
+
+**S3 with files stored**
+![alt text](doc/images/evidence/s3.png)
 
 # Summary
-Now we have a fully fledge cloud web app that automatically deploys itself based on changes on the repository
+Now we have a fully functional Cloud Web App with CI/CD and high availability, and due to how this architecture was set, it easy to keep growing like managing user accounts or just make layout changes with ease.
+
+Cloud Development has his sets of advantages and we can fully see them here, we only needed to worry about some setup processes and when that is done, the only thing left is develop our product withouth worrying about infrastrucutre
+
+
+# Credits
+Developed by: Luis Marin
