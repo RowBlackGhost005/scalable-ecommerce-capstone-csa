@@ -1067,3 +1067,139 @@ At this point our backend is ready, now we will be setting a CI/CD pipeline for 
 Next I'll show how to create this pipeline
 
 ## Setup a Repository
+Setup a repository that its going to hold the code that the pipeline is going to fetch from.
+
+In this case the repository is this same repository, but the pipeline is going to fetch the `/frontend` folder.
+
+Make sure you have a project ready for pushing changes into the repo.
+
+Once setup we are ready to move to the next step.
+
+## Setup an EC2 Instance
+We will be deploying our react app to an EC2 instance once is built, for this we will be needing to setup an EC2 instance that will be attached at the end of our pipeline.
+
+To do this in your AWS Dashboard go to `EC2` then `Launch Instance`
+
+In the launch screen add a `Name` to the instance.
+
+For the image select Ubuntu (You can choose AWS Linux but your commands will vary).
+
+![EC2 Setup screen 1](doc/images/ec2/setup-1.png)
+
+Scroll down and select an `Instance Type`, if available, select the Free Tier Eligible to avoid service fee.
+
+Make sure to `create` a `key pair`, we will be needing them for connecting to our EC2 later for seting up the server.
+
+The key must be `RSA` type and `PPK` format for PuTTY usage, if you have other methods, go ahead and create them as you need.
+
+![EC2 Setup screen 2](doc/images/ec2/setup-2.png)
+
+Now down on Network Settings, make sure to select `Allow SSH` , `Allow HTTP` and `Allow HHTPS`, this way our EC2 is going to be ready to accept requests from our users browsers.
+
+![EC2 Setup screen 3](doc/images/ec2/setup-3.png)
+
+Make sure to select some storage space, 8 is more than enough for this project.
+
+![EC2 Setup screen 4](doc/images/ec2/setup-4.png)
+
+Once done, go ahead and click `Launch Instance`
+
+## Configure the EC2 Instance
+With our EC2 instance up and running we now need to connect to it to prepare it for hosting our react app.
+
+To do this, make sure the EC2 instance is up and running, then look for its `Public DNS` by clicking on the Instance inside the `EC2 Dashboard`
+
+Then use some app like PuTTY to connect through SSL.
+
+Remember that for Ubuntu instances in AWS, the user is `ubuntu` so we will be adding `ubuntu@` before the DNS URL when making the connection.
+
+Also remember to add the `PPK` key under `Connection > SSH > Auth > Credentials`, so it grants us access.
+
+![Putty](doc/images/ec2/putty.png)
+
+Once connected to our EC2 instance, we need to setup our web server by running some commands and installing the required packages.
+
+![EC2 Connection](doc/images/ec2/ssh-1.png)
+
+### Prepare EC2 Instance
+For this EC2 Instance we will be using `nginx` as our web server, to install it we need to run the following commands:
+
+```Bash
+sudo apt update
+sudo apt install -y nginx
+sudo systemctl start nginx
+sudo systemctl enable nginx
+```
+
+After runing these comands, we should be able to see the nginx service active by running:
+
+```bash
+sudo systemctl status nginx
+```
+
+![System status nginx](doc/images/ec2/ssh-2.png)
+
+
+### Setup NGINX
+Now that `nginx` is installed and running on our machine, we need to set it up so it can be able to host our react app.
+
+First lets create a folder where our pipeline will put our build.
+
+This command creates a folder and then grants access the current user.
+
+```bash
+sudo mkdir -p /var/www/html/ecommerce
+sudo chown -R ubuntu:ubuntu /var/www/html/ecommerce 
+```
+
+*Note: You can create any folder anywhere, just make sure you set them up accordingly down the line*
+
+Now we need to setup nginx so it has the directives as to how to look and serve our react app.
+
+To do this we need to access its configuration file by runnig this command:
+
+```Bash
+sudo nano /etc/nginx/sites-available/default
+```
+
+Once inside the file, we need to edit some lines as follows:
+
+```
+    root /var/www/html/ecommerce;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html =404;
+    }
+```
+
+This tells `Nginx` to look for an index.html file inside our ecommerce folder, where the build of the react app will be.
+
+*Note that these settings are somewhere in the file, you'll have to look for them*
+
+![Editing nginx settings](doc/images/ec2/ssh-3.png)
+
+Note that we only needed to add /ecommerce at the end of the `root` parameter in this case.
+
+Now press 
+`CTRL + X` (Exits the editor)
+then input `Y` (Accept saving the changes) and hit enter, 
+and then `Enter` again to save the changes (Sets the path, this leaves it intact).
+
+To make sure we made valid changes we can validate our nginx configuration by entering this command:
+
+```Bash
+sudo nginx -t
+```
+
+![Checking nginx config](doc/images/ec2/ssh-4.png)
+
+If its ok, then `reload` nginx
+
+```Bash
+sudo systemctl reload nginx
+```
+
+Now our EC2 is ready to serve our React app files once the pipeline deploys them, take in mind that we need to tell our pipeline to deploy them were we pointed in the nginx config.
+
+But for now we can make sure our server is ready by copying the instance `Public DNS` 
