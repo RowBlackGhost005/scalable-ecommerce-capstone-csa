@@ -37,18 +37,24 @@ const ProductForm = () => {
     try {
       const { imageFile, name, description, price } = formData;
 
-      const { uploadURL, key } = await getPresignedUploadUrl({
+      const { uploadUrl, key } = await getPresignedUploadUrl({
         fileName: imageFile.name,
         fileType: imageFile.type,
       });
 
-      await uploadFileToS3(imageFile, uploadURL);
+      await uploadFileToS3(imageFile, uploadUrl);
+
+      
+
+      const fileUrl = uploadUrl.split('?')[0];
+      console.log('URL Sent '+ fileUrl);
+
 
       await createProduct({
         name,
         description,
         price: parseFloat(price),
-        imageKey: key,
+        imageKey: fileUrl,
       });
 
       setSuccessMsg('Product created successfully!');

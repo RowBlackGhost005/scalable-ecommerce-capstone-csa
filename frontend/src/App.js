@@ -6,6 +6,7 @@ import './styles.css';
 
 import ProductList from './pages/ProductList';
 import ProductForm from './pages/ProductForm';
+import ProductDetails from './pages/ProductDetails';
 import Header from './components/Header'
 
 
@@ -16,7 +17,7 @@ function App() {
       <Routes>
         <Route path="/" element={<ProductList />} />
         <Route path="/products/register" element={<ProductForm />} />
-        {/* TODO <Route path="/product/:id" element={<ProductDetail />} /> */}
+        <Route path="/product/:id" element={<ProductDetails />} />
       </Routes>
     </Router>
   );

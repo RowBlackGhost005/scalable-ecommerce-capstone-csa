@@ -36,6 +36,7 @@ export const getPresignedUploadUrl = async ({ fileName, fileType }) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ fileName, fileType }),
   });
+
   if (!res.ok) throw new Error('Failed to generate upload URL');
   return res.json();
 };

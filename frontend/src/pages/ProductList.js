@@ -28,7 +28,7 @@ const ProductList = ({ onProductClick }) => {
       {error && <p className="error-message">{error}</p>}
       <div className="product-grid">
         {products.map((product) => (
-          <ProductItem key={product.id} product={product} onClick={onProductClick} />
+          <ProductItem key={product.id} product={product}/>
         ))}
       </div>
     </div>
