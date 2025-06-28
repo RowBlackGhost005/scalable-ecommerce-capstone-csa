@@ -18,7 +18,7 @@ This project features:
 - Frontend deployed in an AWS EC2 Instance.
 - Backend deployed in AWS Lambdas.
 - AWS Code Pipeline for CI/CD of the Frontend.
-- AWS RDS (MySQL) for persistance of prodcts.
+- AWS RDS (MySQL) for persistance of products.
 - AWS S3 for persistance of products images.
 - AWS API Gateway for routing requests to Lambda.
 - Cloud Watch for monitoring of EC2 Instances and Application health.
