@@ -1039,6 +1039,34 @@ Now our API gateway routes should be looking something like this:
 
 ![API Gateway Routes Overview](doc/images/apigateway/apigateway-overview.png)
 
+## API Gateway CORS
+Before we continue, knowing that this app is going to have a frontend, we need to activate CORS so our request go throught the API to our backend, this is simply done by going into `CORS` on the left menu.
+
+Then click on `Configure`
+
+Here we will be adding the following
+
+`Access-Control-Allow-Origin` 
+``` 
+* 
+```
+
+`Access-Control-Allow-Methods` 
+``` 
+GET | POST | OPTIONS | PUT | DELETE
+```
+
+`Access-Control-Allow-Headers` 
+``` 
+content-type | x-amz-date | authorization
+```
+
+This now sets the stage for a seamingless integration with our front end once is depoloyed.
+
+*Note: Once the frontend is deployed, you will need to change the allow origin to the URL of the front end for more security*
+
+![API Gateway CORS](doc/images/apigateway/cors.png)
+
 Now lets get our API endpoint so we can make calls to it, to this, click on the name of the API that its in the left side bar.
 
 Here look for the `Default Endpoint`, this where we are going to direct our calls.
@@ -1573,5 +1601,15 @@ Create a name for the policy and review that the access level, resources and con
 
 Now our pipeline has access to our EC2 Instance, meaning the deployment process now should be sucessful.
 
+
 # Testing CI/CD
 Go ahead and make some changes to the repository and push them, so the Pipeline picks them up and deploys them, making this the first sucessful deployment of our app.
+
+![Pipeline Execution](doc/images/codepipeline/execution-2.png)
+
+Now our pipeline works and our changes have been deployed to our EC2 instance.
+
+![Pipeline Execution](doc/images/codepipeline/execution-2-sucess.png)
+
+If we go into our EC2 instance URL we can see that in fact, our web app is now online.
+

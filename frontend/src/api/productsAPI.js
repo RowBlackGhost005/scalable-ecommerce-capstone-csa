@@ -1,19 +1,19 @@
 const API_BASE = 'https://6hnupqqtm3.execute-api.us-east-1.amazonaws.com'; // Replace with your real API Gateway URL
 
 export const getAllProducts = async () => {
-  const res = await fetch(`${API_BASE}/products`);
+  const res = await fetch(`${API_BASE}/api/products`);
   if (!res.ok) throw new Error('Failed to fetch products');
   return res.json();
 };
 
 export const getProductById = async (id) => {
-  const res = await fetch(`${API_BASE}/products/${id}`);
+  const res = await fetch(`${API_BASE}/api/products/${id}`);
   if (!res.ok) throw new Error('Failed to fetch product');
   return res.json();
 };
 
 export const createProduct = async (productData) => {
-  const res = await fetch(`${API_BASE}/products`, {
+  const res = await fetch(`${API_BASE}/api/products`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(productData),
@@ -23,7 +23,7 @@ export const createProduct = async (productData) => {
 };
 
 export const deleteProductById = async (id) => {
-  const res = await fetch(`${API_BASE}/products/${id}`, {
+  const res = await fetch(`${API_BASE}/api/products/${id}`, {
     method: 'DELETE',
   });
   if (!res.ok) throw new Error('Failed to delete product');
@@ -31,7 +31,7 @@ export const deleteProductById = async (id) => {
 };
 
 export const getPresignedUploadUrl = async ({ fileName, fileType }) => {
-  const res = await fetch(`${API_BASE}/upload-url`, {
+  const res = await fetch(`${API_BASE}/api/files/upload/presign`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ fileName, fileType }),
