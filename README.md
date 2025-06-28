@@ -1202,4 +1202,248 @@ sudo systemctl reload nginx
 
 Now our EC2 is ready to serve our React app files once the pipeline deploys them, take in mind that we need to tell our pipeline to deploy them were we pointed in the nginx config.
 
-But for now we can make sure our server is ready by copying the instance `Public DNS` 
+But for now we can make sure our server is ready by copying the instance `Public DNS` and copying it in the browser, we should be able to see a Nginx fallback page because as of right now there is no index.html
+
+![Browser showing Nginx page](doc/images/ec2/browser-attempt.png)
+
+And here it is, this tells us that so far our server is ready and just need our project files to be able to serve them.
+
+### Create IAM Role for Deployment
+Next we are going to start off with the CI/CD preparation, first we need to setup some permissions for our EC2 instnace to grant him permissions to work with other systems, mainly the Code Deploy.
+
+To do this got to `IAM` then `Roles` then `Create Role`
+
+Here select `AWS Service` as the Trusted Entity Type.
+
+And as Use Case select `EC2` twice.
+
+Then click `next`
+
+![IAM Deploy Role Setup](doc/images/ec2/ec2-deploy-role-1.png)
+
+Next lets attach two permissions, use the search bar to look for them:
+
+```
+AmazonSSMManagedInstanceCore
+```
+and
+
+```
+AmazonEC2RoleForAWSCodeDeploy
+```
+
+Select them by clicking on their checkbox and then click `Next`
+
+![IAM Deploy Role Setup Step 2](doc/images/ec2/ec2-deploy-role-2.png)
+
+Next lets create a `name` for the role and make sure to review that both permissions are correctly added.
+
+If everything checks up click on `Create Role`
+
+![IAM Deploy Role Setup Step 3](doc/images/ec2/ec2-deploy-role-3.png)
+
+Now we need to attach this role to our EC2 instance to make effect.
+
+### Attaching Deployment IAM Role to EC2
+
+Now go back to EC2 Dashboard and select the Instance where we will be deploying, then click on `Actions` then `Security` then `Modify IAM Role`
+
+Here look for the role we just created and select it, then click `Update IAM Role`
+
+![Attach IAM Role](doc/images/ec2/attaching-iam-role.png)
+
+### Installing SSM Agent
+Now we need to go back to our EC2 instance to install SSM Agent in our server, this agent its wahat allows interservice communication, meaning it allows the Deploy stage to communicate with EC2 to put the files into it.
+
+To do so we need to run some commands again in the EC2 instance, so we need PuTTY again.
+
+
+Run these commands to delete ssm-agent that might come pre-installed with the OS, we will be installing the .deb using wget, this is a more stable version
+
+```
+sudo systemctl stop snap.amazon-ssm-agent.amazon-ssm-agent.service
+sudo snap remove amazon-ssm-agent
+```
+
+Change the `<REGION>` placeholders with the region where the EC2 is located at *i.e us-east-1*
+
+```
+sudo apt install -y ruby-full wget
+wget https://s3.<REGION>.amazonaws.com/amazon-ssm-<REGION>/latest/debian_amd64/amazon-ssm-agent.deb
+sudo dpkg -i amazon-ssm-agent.deb
+sudo systemctl enable amazon-ssm-agent
+sudo systemctl start amazon-ssm-agent
+```
+
+```
+wget https://aws-codedeploy-<REGION>.s3.<REGION>.amazonaws.com/latest/install
+chmod +x ./install
+sudo ./install auto
+sudo systemctl enable codedeploy-agent
+sudo systemctl start codedeploy-agent
+```
+
+Now or EC2 is completely ready to be part of the Deployment phase in our pipeline.
+
+## Setup Code Pipeline
+Now everything is ready and we are good to go in the creation of the Pipeline for CI/CD.
+
+We will be setting up a Code Pipeline to fetch the code from the repository, Code Build to build the react project and then Code Deploy to push the build to our EC2 server.
+
+To achieve this go to `Code Pipeline` in your AWS Dashboard and then click on `Create Pipeline`.
+
+In step 1 we need to select `Build Custom Pipeline`
+
+![Code Pipeline Step 1](doc/images/codepipeline/step-1.png)
+
+Now on step 2:
+* Create a name for the pipeline
+* Select `queue` in Execution mode
+* Let AWS Create a new Service Role
+
+![Code Pipeline Step 2](doc/images/codepipeline/step-2.png)
+
+On step 3  we will be connecting to our repository, in this case GitHub.
+
+Click `Source Provider` and select GitHub (Or your repository provider).
+
+Then make sure to select the correct repository and branch from your account.
+
+![Code Pipeline Step 3](doc/images/codepipeline/step-3.png)
+
+Now in step 4 we will be creating a new AWS Code Build, so go ahead and select `Other Build Providers` then select `AWS Codebuild` and click on `Create Project`
+
+![Code Pipeline Step 4](doc/images/codepipeline/step-4.png)
+
+This is going to take us to the Code Build Creation
+
+### Creating AWS Code Build
+After the last step a new window should have appeared, here we are going to configure our Code Build.
+
+This is a set of instructions as to how our code from the repository should be built.
+
+Create a `name` for the build and make sure to leave everything on default
+
+![Code Build Setup 1](doc/images/codebuild/codebuild-1.png)
+
+Everything on Enviroment is going to be left on defaults
+
+![Code Build Setup 2](doc/images/codebuild/codebuild-2.png)
+
+Now on buildspec, make sure to select `Use Buildspec File`.
+
+![Code Build Setup 3](doc/images/codebuild/codebuild-3.png)
+
+This file is the one that contains all the definitions as to how to build our app, and we are telling it that we are going to provide it.
+
+This file should be in the root of our repository, so `create` a `buildspec.yml` file.
+
+Add the following to it:
+```YML
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 18
+    commands:
+      - cd frontend
+      - npm install
+  build:
+    commands:
+      - npm run build
+  post_build:
+    commands:
+      - echo "Build completed on `date`"
+      - mkdir -p /tmp/deploy
+      - cp -r build/* /tmp/deploy/
+      - cp ../appspec.yml /tmp/deploy/
+
+artifacts:
+  files:
+    - '**/*'
+  base-directory: /tmp/deploy
+```
+
+Make sure this file is in the root of the repository.
+
+Note: Note that we are referencing an /appspec.yml file, this will be created on steps ahead
+
+Skimming through this config you can see that, this process will get the files from `/frontend` on our repo and `run npm install` to get all dependencies.
+
+Then it will `npm run build` to create a build package of our app.
+
+Then it will create a temp folder `/tmp/deploy` and inside of it copies all files inside of `/build` (the one created by npm build)
+
+And then, exposes those files to the next stage as the artifact of this build.
+
+Make sure that `Cloudwatch Logs` is selected, this way we are going to have logs of all build attempts
+
+Then click `Continue to Code Pipeline`
+![Code Build Setup 4](doc/images/codebuild/codebuild-4.png)
+
+Back at the pipeline setup, make sure the Code Build we created is selected and make sure that the `Input Artifact` is `Defined by Source` (Meaning our repository)
+
+![Code Pipeline Step 4-1](doc/images/codepipeline/step-4-1.png)
+
+We will be skipping the Test configuration due to not having test at this moment.
+
+![Code Pipeline Step 5](doc/images/codepipeline/step-5.png)
+
+On step 6, we will be setting up the Deployment Stage, right now the idea is to deploy directly to an EC2 instance, so that is what will be adding.
+
+Select `EC2` as the `Provider` And make sure the `Input Artifacts` are defined by Build.
+
+![Code Pipeline Step 6](doc/images/codepipeline/step-6.png)
+
+Below we need to select `EC2` again as `Instance Type`, then we need to select our EC2 instance by matching the tags, we can use the one we created earlier or the default `Name` key and `Value` (The name we select for our EC2)
+
+In `Deployspec` select `Use a DeploySpec file`, this is going to be a file that the Deploy Stage is going to use to know what to do once the artifact reaches it.
+
+Inside the input of DeploySpec be sure to add the name of the file that Deploy is going to look for, for this, we will leave it default `appspec.yml`
+
+![Code Pipeline Step 7](doc/images/codepipeline/step-7.png)
+
+Now that we selected DeploySpec file, we need to create this file in our root folder in the repo, this way we make sure the Build Phase has access to it and it passes it to the Deploy Phase.
+
+Go to your repository and in the `ROOT` folder create a file called `appspec.yml` and paste the following code:
+
+```BASH
+version: 0.0
+
+files:
+  - source: /
+    destination: /var/www/html/ecommerce
+
+hooks:
+  BeforeDeploy:
+    - location: scripts/before_deploy
+      timeout: 60
+      runas: ubuntu
+```
+
+This simple command tells the Deploy stage to put the built result in /var/www/html/ecommerce (Where NGIGX expects the app to be).
+
+---
+#### Bug fix for Deployment
+For some reason, while I developed this project my Deploy phase in the pipeline always failed because it expected a `before-deploy` script, even if we never specified it and I could not got my head around it.
+
+So as a last restort fix I gave the Deploy what it wanted, a 'before-deploy' script, this does nothing more than echoing something in the console, but this way I avoid the error of 'not having a script' that prevented me from deploying the app.
+
+So to implement this fix you already set half of it above (The hooks part wasn't orignally planned).
+
+So now create a folder in the root of the repository called `scripts` and inside of it create a `before_deploy.sh` and put the following inside:
+
+```BASH
+echo "Before Deploy. . ."
+exit 0
+```
+Now the deploy phase gets what it 'expects' for some reason and it allow the deployment.
+
+---
+
+Make sure to include these files in the repository.
+
+Now in step 7 verify that all our changes are setup properly.
+
+At this point, the files we created should be in the remote repository already, because after the creation of the pipeline, it will attempt to run the process.
