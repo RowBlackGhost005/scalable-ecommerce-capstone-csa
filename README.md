@@ -354,7 +354,6 @@ Optionally add the architecture and runtime of this layer and click on `Create`
 
 Now our layer is ready to be attached to each Lambda that requires a connection to Mysql, this way we avoid the need of bundling our own node projects for each lambda.
 
-
 ## Setup Create Product Lambda
 Now, this lambda is going to connect to our Database to create a new entry in the `Products` table, for this we will be needing the following code:
 
@@ -435,6 +434,42 @@ Here select `Custom layer` and look for the layer we created, in this case `mysq
 Select the version which it should only have one and then `Add`
 
 ![Adding Layer](doc/images/lambda/adding-layer.png)
+
+
+### Attaching Lambda to VPC
+Now that we created our lambda we need to add it to the VPC (Virtual Private Cloud), this is our own account private cloud where we have control over the network.
+
+This work by setting up VPC Secure Groups (Firewalls) for allowing traffic through certain ports, now due to the nature of Lambda it does not have a VPC configuration.
+
+We need this VPC configuration to make a connection with MySQL, because our Lambdas need to be on the same network as the MySQL to be able to communicate with each other.
+
+This is achieved by setting up a VPC and attach it VPC Security Groups (Firewalls) that allow Incoming and Outbound traffic through certain ports, in this case 3306, but because we only have this project and our databse is already in a VPC we are only going to attach our Lambdas to the defaults VPC so it can communicate with mysql.
+
+In a bigger cloud, we might need to create a custom VPC, with Custom VPC Security Groups to interconnect our Lambdas with the database directly, making this the most secure approach due to how only a few ports are connected and they can only happen between set services.
+
+To attach a VPC to our lambdas we need to go to the `Configuration` Tab, then go to `VPC` on the left menu, then click `Edit`
+
+![Lambda VPC Screen](doc/images/lambda/lambda-vpc-page.png)
+
+Here we will be selecting the only `VPC` that should be available to us
+
+Then on subnets, select everyone, due to the default configuration of AWS RDS, MySQL should be in all of them.
+
+Then on Security Groups choose the `Default`
+
+![Lambda VPC ediot](doc/images/lambda/lambda-vpc-edit.png)
+
+Before saving it, we can make sure our VPC configuration is the one we want (specially if we have multiple VPC, subnets and security Groups), to do this go to the `Aurora and RDS` in AWS, then go to `Databases` and finally click on the database we are using.
+
+Here you can see the VPC, Subnets and VPC Security groups our database is in.
+
+Make sure it aligns with the ones on the VPC.
+
+In this case the Security Group is the default and it has a rule to allow all inbound and outbound connections from within the same security group, this makes so by adding our Lambda to the same VPC (Network) and adding it to the security group (Firewall) it now has reach to our database.
+
+![RDS Security Check](doc/images/lambda/rdbs-security-check.png)
+
+Go back to the Lambda VPC and click `Save`
 
 
 Go back to the `Code` section and click on `Deploy`
@@ -754,8 +789,22 @@ Here we will be granting the permissions to allow connection to our database usi
         "rds-db:connect"
       ],
       "Resource": "*"
+    },
+    {
+        "Sid": "AllowVPCNetworking",
+        "Effect": "Allow",
+        "Action": [
+            "ec2:CreateNetworkInterface",
+            "ec2:DescribeNetworkInterfaces",
+            "ec2:DeleteNetworkInterface",
+            "ec2:DescribeSubnets",
+            "ec2:DescribeSecurityGroups",
+            "ec2:DescribeVpcs"
+        ],
+        "Resource": "*"
     }
 ```
+*AllowVPCNetworking is what allows our Lambda to connect with MySQL now that it has access to the VPC*
 
 Make sure you insert this in the correct way to keep the JSON format of the policy.
 
@@ -792,6 +841,19 @@ Here we will be granting the permissions to allow connection to our database usi
         "rds-db:connect"
       ],
       "Resource": "*"
+    },
+    {
+        "Sid": "AllowVPCNetworking",
+        "Effect": "Allow",
+        "Action": [
+            "ec2:CreateNetworkInterface",
+            "ec2:DescribeNetworkInterfaces",
+            "ec2:DeleteNetworkInterface",
+            "ec2:DescribeSubnets",
+            "ec2:DescribeSecurityGroups",
+            "ec2:DescribeVpcs"
+        ],
+        "Resource": "*"
     }
 ```
 
@@ -812,6 +874,19 @@ Here we will be granting the permissions to allow connection to our database usi
         "rds-db:connect"
       ],
       "Resource": "*"
+    },
+    {
+        "Sid": "AllowVPCNetworking",
+        "Effect": "Allow",
+        "Action": [
+            "ec2:CreateNetworkInterface",
+            "ec2:DescribeNetworkInterfaces",
+            "ec2:DeleteNetworkInterface",
+            "ec2:DescribeSubnets",
+            "ec2:DescribeSecurityGroups",
+            "ec2:DescribeVpcs"
+        ],
+        "Resource": "*"
     }
 ```
 
@@ -841,6 +916,19 @@ Here we will be granting the permissions to allow connection to our database and
         "s3:GetObject"
       ],
       "Resource": "arn:aws:s3:::your-bucket-name/*"
+    },
+    {
+        "Sid": "AllowVPCNetworking",
+        "Effect": "Allow",
+        "Action": [
+            "ec2:CreateNetworkInterface",
+            "ec2:DescribeNetworkInterfaces",
+            "ec2:DeleteNetworkInterface",
+            "ec2:DescribeSubnets",
+            "ec2:DescribeSecurityGroups",
+            "ec2:DescribeVpcs"
+        ],
+        "Resource": "*"
     }
 ```
 
@@ -957,3 +1045,25 @@ Here look for the `Default Endpoint`, this where we are going to direct our call
 
 ![API Gateway Dashboard](doc/images/apigateway/apigateway-dashboard.png)
 
+## Early Test
+At this point our backend is finished and we should be able to send a request to it and receive a response.
+
+So that's what we are gonna be doing in this point, so use Postman or Curl to send a GET to the /producs endpoint and see what we get.
+
+And as we can see here, we are getting a 200 with an empty array.
+
+Meaning that:
+1. Our Database Works
+2. Lambda can reach the Database.
+3. Our API Gateway is setup properly.
+
+![Postman Test](doc/images/apigateway/early-test.png)
+
+Now that our backend is ready, we now can move to the development of our frontend and setup a nice CI/CD pipeline for it so all changes get posted as soon as they happen.
+
+# Setup CI/CD
+At this point our backend is ready, now we will be setting a CI/CD pipeline for our frontend, the frontend is going to be a React app that its going to be built to an optimized production ready package and then its going to be deployed to an EC2 instance that its going to serve as a Web Server.
+
+Next I'll show how to create this pipeline
+
+## Setup a Repository
