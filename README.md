@@ -1601,6 +1601,36 @@ Create a name for the policy and review that the access level, resources and con
 
 Now our pipeline has access to our EC2 Instance, meaning the deployment process now should be sucessful.
 
+### Setting up S3 endpoint for VPC
+At this point everything is interconected and should work fine, but there is an issue that arouse during the development.
+
+Because we added a VPC to our lambdas for Database Access, it has made them so they can interact within the private cloud, but some lambdas like the Delete that we created, need acces to the S3, which is going to be happening through the Internet and not withint the S3.
+
+So at this point our Delte is incomplete, because it wont be able to reach the S3 bucket to delete items
+
+To fix that we need to add an endpoint for S3 on our VPC.
+
+Go to `VPC` in AWS Dashboard, then `Endpoints` then `Create Endpoint`
+
+Name the endpoint and select `AWS Services` as the Type.
+
+![Setup VPC](doc/images/vpc/setup-1.png)
+
+Next we will be looking for the S3 gateway, for this, in services look for `com.amazonaws.<REGION>.s3`
+
+Note that `REGION` is your region where the S3 is at.
+
+Select the type Gateway 
+
+![Setup VPC](doc/images/vpc/setup-2.png)
+
+Then on `Routes Table` select the table that has our Lambda Subnet, in this case theres only one because we dont have more tables.
+
+Then click on `Create Endpoint`
+
+![Setup VPC](doc/images/vpc/setup-3.png)
+
+With this change, we now have fixed the error we cause when we added our Lambda to our VPC and now our Lambdas can connect with the S3 if they need to.
 
 # Testing CI/CD
 Go ahead and make some changes to the repository and push them, so the Pipeline picks them up and deploys them, making this the first sucessful deployment of our app.
@@ -1613,3 +1643,12 @@ Now our pipeline works and our changes have been deployed to our EC2 instance.
 
 If we go into our EC2 instance URL we can see that in fact, our web app is now online.
 
+![Web app home page](doc/images/frontend/home.png)
+
+Now we can fully interact with our market place
+
+![Web app register product](doc/images/frontend/register-product.png)
+
+
+# Summary
+Now we have a fully fledge cloud web app that automatically deploys itself based on changes on the repository
