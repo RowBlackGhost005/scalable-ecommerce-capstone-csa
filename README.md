@@ -1442,8 +1442,136 @@ Now the deploy phase gets what it 'expects' for some reason and it allow the dep
 
 ---
 
+### Codebuild Continuation
+
 Make sure to include these files in the repository.
 
 Now in step 7 verify that all our changes are setup properly.
 
 At this point, the files we created should be in the remote repository already, because after the creation of the pipeline, it will attempt to run the process.
+
+If everything looks good go ahead and click `Create Pipeline`
+
+![Code Pipeline Step 8](doc/images/codepipeline/step-8.png)
+
+
+Once created the process is going to start and attempt to deploy automatically.
+
+![Pipeline Execution](doc/images/codepipeline/execution-1.png)
+
+This build will fail because we got a warning on step 6, this error states that we need to `manually grant access` to our pipeline to access, write and delete files in our EC2.
+
+This is because the direct integration of EC2 delegates the 'deployment' to our pipeline itself, that's why we need to grant him access, so we will be doing this next.
+
+![Pipeline Execution Fail](doc/images/codepipeline/execution-1-fail.png)
+
+### Granting Access to EC2 to the Pipeline
+Now we will be granting permissions to our Pipeline to interact with the EC2 instance to push the deployment files.
+
+To do this, go to `IAM` then `Roles`
+
+Here we will be on the look for the role of our current pipeline, the name should be something like `AWSCodePipelineServiceRole-#Region#-#PipelineName#`
+
+Click on it and then go to `Add Permissions` then select `Create Inline Policy` (Or you can create a policy and attach it)
+
+Here we will be adding the following permissions definition:
+
+Note that you will need:
+
+* Pipeline Name (The complete name of the pipeline)
+* Region Name (Where the EC2 resides)
+* Account ID (Your 12 digits)
+* Target group name (Of the EC2 [name] (The tag Name))
+* Target value (Of the EC2 [#Name#] (The tag value))
+
+Remember to delete both [] or {} that surround the placeholders.
+
+```JSON
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "StatementWithAllResource",
+            "Effect": "Allow",
+            "Action": [
+                "ec2:DescribeInstances",
+                "elasticloadbalancing:DescribeTargetGroupAttributes",
+                "elasticloadbalancing:DescribeTargetGroups",
+                "elasticloadbalancing:DescribeTargetHealth",
+                "ssm:CancelCommand",
+                "ssm:DescribeInstanceInformation",
+                "ssm:ListCommandInvocations"
+            ],
+            "Resource": [
+                "*"
+            ]
+        },
+        {
+            "Sid": "StatementForLogs",
+            "Effect": "Allow",
+            "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents"
+            ],
+            "Resource": [
+                "arn:aws:logs:{{region}}:{{AccountId}}:log-group:/aws/codepipeline/{{pipelineName}}:*"
+            ]
+        },
+        {
+            "Sid": "StatementForElasticloadbalancing",
+            "Effect": "Allow",
+            "Action": [
+                "elasticloadbalancing:DeregisterTargets",
+                "elasticloadbalancing:RegisterTargets"
+            ],
+            "Resource": [
+                "arn:aws:elasticloadbalancing:{{region}}:{{AccountId}}:targetgroup/[[targetGroupName]]/*"
+            ]
+        },
+        {
+            "Sid": "StatementForSsmOnTaggedInstances",
+            "Effect": "Allow",
+            "Action": [
+                "ssm:SendCommand"
+            ],
+            "Resource": [
+                "arn:aws:ec2:{{region}}:{{AccountId}}:instance/*"
+            ],
+            "Condition": {
+                "StringEquals": {
+                    "aws:ResourceTag/{{tagKey}}": "{{tagValue}}"
+                }
+            }
+        },
+        {
+            "Sid": "StatementForSsmApprovedDocuments",
+            "Effect": "Allow",
+            "Action": [
+                "ssm:SendCommand"
+            ],
+            "Resource": [
+                "arn:aws:ssm:{{region}}::document/AWS-RunPowerShellScript",
+                "arn:aws:ssm:{{region}}::document/AWS-RunShellScript"
+            ]
+        }
+    ]
+}
+```
+
+Remember that the `Tag Name` is the tag of the EC2 instance, if not set any, the default should be `Name`, and then the Tag Value is the `actual name` of the EC2 instance.
+
+Once the policy is edited with your data it should look something like this:
+
+![Pipeline Policy Editor](doc/images/codepipeline/pipeline-policy.png)
+
+If the editor detects no errors, go ahead and click `Next`.
+
+Create a name for the policy and review that the access level, resources and conditions look good, then click on `Create Policy`
+
+![Pipeline Policy Editor](doc/images/codepipeline/pipeline-policy-summary.png)
+
+Now our pipeline has access to our EC2 Instance, meaning the deployment process now should be sucessful.
+
+# Testing CI/CD
+Go ahead and make some changes to the repository and push them, so the Pipeline picks them up and deploys them, making this the first sucessful deployment of our app.
